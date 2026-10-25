@@ -1,0 +1,296 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  female
+  male
+  other
+  prefer_not_to_say
+}
+
+enum SymptomSeverity {
+  low
+  medium
+  high
+}
+
+enum ChatSender {
+  user
+  assistant
+  system
+}
+
+enum SupportTicketStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum SupportTicketPriority {
+  low
+  medium
+  high
+  urgent
+}
+
+model User {
+  id                  String    @id @default(uuid()) @db.Uuid
+  email               String    @unique
+  passwordHash        String    @map("password_hash")
+  emailVerifiedAt     DateTime? @map("email_verified_at")
+  firstName           String?   @map("first_name")
+  lastName            String?   @map("last_name")
+  phone               String?
+  dateOfBirth         DateTime? @map("date_of_birth") @db.Date
+  gender              Gender?
+  bloodGroup          String?   @map("blood_group")
+  heightCm            Float?    @map("height_cm")
+  weightKg            Float?    @map("weight_kg")
+  allergies           String[]  @default([])
+  conditions          String[]  @default([])
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+  deletedAt           DateTime? @map("deleted_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  medicalRecords      MedicalRecord[]
+  familyMembers       FamilyMember[]
+  symptomChecks       SymptomCheck[]
+  chats               Chat[]
+  notifications       Notification[]
+  supportTickets      SupportTicket[]
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  emailVerifyTokens   EmailVerificationToken[]
+  auditLogsAsSubject  AuditLog[]               @relation("AuditSubject")
+  auditLogsAsActor    AuditLog[]               @relation("AuditActor")
+
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model MedicalRecord {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  familyMemberId String    @map("family_member_id") @db.Uuid
+  title          String
+  recordType     String    @map("record_type")
+  description    String?
+  storageKey     String?   @map("storage_key")
+  fileName       String?   @map("file_name")
+  doctorName     String?   @map("doctor_name")
+  hospitalName   String?   @map("hospital_name")
+  recordDate     DateTime? @map("record_date") @db.Date
+  deletedAt      DateTime? @map("deleted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyMember FamilyMember   @relation(fields: [familyMemberId, userId], references: [id, userId], onDelete: Restrict)
+  ocrJobs      RecordOcrJob[]
+
+  @@index([userId, deletedAt])
+  @@index([userId, familyMemberId, deletedAt])
+  @@map("medical_records")
+}
+
+model FamilyMember {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  name         String
+  relationship String
+  dateOfBirth  DateTime? @map("date_of_birth") @db.Date
+  gender       Gender?
+  isSelf       Boolean   @default(false) @map("is_self")
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  medicalRecords MedicalRecord[]
+
+  @@unique([id, userId])
+  @@index([userId, deletedAt, createdAt])
+  @@map("family_members")
+}
+
+enum RecordOcrStatus {
+  queued
+  processing
+  succeeded
+  failed
+}
+
+model RecordOcrJob {
+  id          String          @id @default(uuid()) @db.Uuid
+  recordId    String          @map("record_id") @db.Uuid
+  storageKey  String          @map("storage_key")
+  status      RecordOcrStatus @default(queued)
+  text        String?         @db.Text
+  confidence  Float?
+  needsReview Boolean?        @map("needs_review")
+  flags       Json?
+  quality     String?
+  errorCode   String?         @map("error_code")
+  attempts    Int             @default(0)
+  startedAt   DateTime?       @map("started_at")
+  finishedAt  DateTime?       @map("finished_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  record MedicalRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@unique([recordId, storageKey])
+  @@index([status, createdAt])
+  @@index([recordId, createdAt(sort: Desc)])
+  @@map("record_ocr_jobs")
+}
+
+model SymptomCheck {
+  id                   String          @id @default(uuid()) @db.Uuid
+  userId               String          @map("user_id") @db.Uuid
+  symptoms             Json
+  severity             SymptomSeverity
+  duration             String?
+  result               Json?
+  recommendedSpecialty String?         @map("recommended_specialty")
+  createdAt            DateTime        @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("symptom_checks")
+}
+
+model Chat {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([userId])
+  @@map("chats")
+}
+
+model ChatMessage {
+  id         String     @id @default(uuid()) @db.Uuid
+  chatId     String     @map("chat_id") @db.Uuid
+  sender     ChatSender
+  message    String
+  tokenCount Int?       @map("token_count")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+  @@map("chat_messages")
+}
+
+model Notification {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("notifications")
+}
+
+model SupportTicket {
+  id          String                @id @default(uuid()) @db.Uuid
+  userId      String                @map("user_id") @db.Uuid
+  subject     String
+  description String
+  status      SupportTicketStatus   @default(open)
+  priority    SupportTicketPriority @default(medium)
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("support_tickets")
+}
+
+model RefreshToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  replacedById String?   @map("replaced_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken?  @relation("TokenReplacement", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces   RefreshToken[] @relation("TokenReplacement")
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("email_verification_tokens")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  actorId      String?  @map("actor_id") @db.Uuid
+  action       String
+  resourceType String?  @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  ipAddress    String?  @map("ip_address")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user  User? @relation("AuditSubject", fields: [userId], references: [id], onDelete: SetNull)
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([action])
+  @@map("audit_logs")
+}

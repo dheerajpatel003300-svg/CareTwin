@@ -1,0 +1,6 @@
+ALTER TABLE "users"
+    ADD COLUMN "blood_group" TEXT,
+    ADD COLUMN "height_cm" DOUBLE PRECISION,
+    ADD COLUMN "weight_kg" DOUBLE PRECISION,
+    ADD COLUMN "allergies" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    ADD COLUMN "conditions" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
