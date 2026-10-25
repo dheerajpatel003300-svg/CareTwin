@@ -4,6 +4,12 @@ Node.js + Express API for CareTwin, built in phases from the backend master plan
 
 The API includes authenticated user profiles, family members, medical records with private attachments, and local OCR for medical documents.
 
+## Record file storage
+
+`STORAGE_PROVIDER` selects `local` or `s3`; it defaults to `local`, which keeps local development unchanged. For S3-compatible storage, configure `STORAGE_PROVIDER=s3` and the `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY` environment variables. Production requires the bucket, endpoint, and access-key credentials, and the endpoint must use HTTPS.
+
+For Supabase Storage, create a **private** bucket, enable/use its S3 connection, and configure the bucket name, region, endpoint, and S3 access key in the backend host's environment. Keep the S3 keys only in the host's secret environment settings; never put them in source control. Existing files in local storage are not migrated automatically and must be moved separately before switching providers if they need to remain available.
+
 ## Prerequisites
 
 - Node.js 20+
@@ -63,7 +69,7 @@ The other statuses are `queued`, `processing`, and `failed`; failures include a 
 
 OCR runs locally in the API container using Tesseract and Poppler; uploaded document bytes and OCR text are not sent to an OCR provider. PDFs are limited to 10 pages, images to 12 megapixels, output to 100,000 characters, each OCR subprocess to 30 seconds, and each job to 2 minutes. Worker concurrency is one job at a time. The queue accepts up to 50 active jobs globally and 5 per account; saturation returns `429`. Temporary files are private to the process and removed after processing.
 
-**Render production gate:** the current storage service writes to local disk. Render filesystems are ephemeral unless a persistent disk is mounted. Before claiming durable uploads or OCR, configure a persistent disk mounted at `STORAGE_DIR` and run a single API instance (the OCR worker runs in that same instance). This deployment configuration is not present in the repository and must be verified in Render. A multi-instance/separate-worker deployment requires shared durable storage and is not supported by the current local storage adapter. The S3 adapter is not currently wired into the active storage service.
+**Render production gate:** uploads can use Supabase Storage through `STORAGE_PROVIDER=s3`; a Render persistent disk is not required for uploaded record files. Verify that the private bucket and S3 connection settings are configured in Render before relying on durable uploads. The OCR worker runs inside the API process, so keep the current deployment to one API instance unless multi-instance worker behavior is deliberately configured and validated. Switching from local storage does not migrate existing files automatically.
 
 Local development and production Docker images need `tesseract-ocr`, `tesseract-ocr-eng`, and `poppler-utils`; the checked-in Dockerfile installs these packages. OCR code is an independent implementation using the system Tesseract/Poppler tools. No source was copied from the cited CareTwin-OCR repository because it has no published license.
 

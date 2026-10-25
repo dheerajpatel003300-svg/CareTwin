@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { PassThrough } = require("stream");
 const {
   S3Client,
   PutObjectCommand,
@@ -15,6 +16,13 @@ const TYPES = { ".pdf": "application/pdf", ".jpg": "image/jpeg", ".png": "image/
 function httpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
+  return error;
+}
+
+function storageError() {
+  const error = new Error("Storage operation failed");
+  error.statusCode = 500;
+  error.code = "STORAGE_ERROR";
   return error;
 }
 
@@ -40,10 +48,21 @@ function checkKey(key) {
 
 // Fails fast at startup if the bucket settings are wrong
 async function ensureRoot() {
-  for (const name of ["S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]) {
-    if (!process.env[name]) throw new Error(`STORAGE_PROVIDER=s3 but ${name} is not set`);
+  for (const name of [
+    "S3_BUCKET",
+    "S3_ENDPOINT",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+  ]) {
+    if (!process.env[name]?.trim()) {
+      throw new Error(`STORAGE_PROVIDER=s3 but ${name} is not set`);
+    }
   }
-  await getClient().send(new HeadBucketCommand({ Bucket: BUCKET() }));
+  try {
+    await getClient().send(new HeadBucketCommand({ Bucket: BUCKET() }));
+  } catch {
+    throw storageError();
+  }
 }
 
 function newKey(userId, ext) {
@@ -53,34 +72,48 @@ function newKey(userId, ext) {
 async function saveFile(key, buffer) {
   checkKey(key);
   const ext = key.slice(key.lastIndexOf("."));
-  await getClient().send(
-    new PutObjectCommand({
-      Bucket: BUCKET(),
-      Key: key,
-      Body: buffer,
-      ContentType: TYPES[ext],
-      CacheControl: "private, no-store",
-    })
-  );
+  try {
+    await getClient().send(
+      new PutObjectCommand({
+        Bucket: BUCKET(),
+        Key: key,
+        Body: buffer,
+        ContentType: TYPES[ext],
+        CacheControl: "private, no-store",
+      })
+    );
+  } catch {
+    throw storageError();
+  }
 }
 
 async function openReadStream(key) {
   checkKey(key);
+  let response;
   try {
-    const res = await getClient().send(new GetObjectCommand({ Bucket: BUCKET(), Key: key }));
-    return res.Body; // a Node Readable
+    response = await getClient().send(new GetObjectCommand({ Bucket: BUCKET(), Key: key }));
   } catch (err) {
     if (err.name === "NoSuchKey" || err.$metadata?.httpStatusCode === 404) {
       throw httpError(404, "File not found");
     }
-    throw err;
+    throw storageError();
   }
+  if (!response.Body) throw storageError();
+
+  const stream = new PassThrough();
+  response.Body.on("error", () => stream.destroy(storageError()));
+  response.Body.pipe(stream);
+  return stream;
 }
 
 // S3 deletes are idempotent: deleting a missing key is not an error
 async function deleteFile(key) {
   checkKey(key);
-  await getClient().send(new DeleteObjectCommand({ Bucket: BUCKET(), Key: key }));
+  try {
+    await getClient().send(new DeleteObjectCommand({ Bucket: BUCKET(), Key: key }));
+  } catch {
+    throw storageError();
+  }
 }
 
 module.exports = { ensureRoot, newKey, saveFile, openReadStream, deleteFile };

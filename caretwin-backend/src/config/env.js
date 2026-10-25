@@ -67,6 +67,22 @@ function loadEnv() {
       productionIssues.push("COOKIE_SECURE must not be false in production");
     }
 
+    if (process.env.STORAGE_PROVIDER === "s3") {
+      for (const name of [
+        "S3_BUCKET",
+        "S3_ENDPOINT",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+      ]) {
+        if (!process.env[name]?.trim()) {
+          productionIssues.push(`${name} must be set when STORAGE_PROVIDER=s3`);
+        }
+      }
+      if (process.env.S3_ENDPOINT && !process.env.S3_ENDPOINT.startsWith("https://")) {
+        productionIssues.push("S3_ENDPOINT must start with https:// when STORAGE_PROVIDER=s3");
+      }
+    }
+
     if (productionIssues.length > 0) {
       throw new Error(`Invalid production environment variables: ${productionIssues.join("; ")}`);
     }

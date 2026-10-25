@@ -89,6 +89,43 @@ test("production rejects COOKIE_SECURE explicitly set to false", () => {
   );
 });
 
+test("production requires HTTPS S3 configuration when the S3 provider is selected", () => {
+  const s3Config = {
+    STORAGE_PROVIDER: "s3",
+    S3_BUCKET: "private-bucket",
+    S3_ENDPOINT: "https://project.example/storage/v1/s3",
+    S3_ACCESS_KEY_ID: "test-access-key",
+    S3_SECRET_ACCESS_KEY: "test-secret-key",
+  };
+
+  withEnvironment(s3Config, () => assert.equal(loadEnv().NODE_ENV, "production"));
+
+  for (const name of ["S3_BUCKET", "S3_ENDPOINT", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]) {
+    const config = { ...s3Config, [name]: "" };
+    withEnvironment(config, () => {
+      assert.throws(
+        () => loadEnv(),
+        (error) => {
+          assert.match(error.message, new RegExp(`${name} must be set`));
+          if (s3Config.S3_SECRET_ACCESS_KEY) {
+            assert.equal(error.message.includes(s3Config.S3_SECRET_ACCESS_KEY), false);
+          }
+          return true;
+        }
+      );
+    });
+  }
+
+  for (const endpoint of ["http://project.example/storage/v1/s3", "project.example"]) {
+    withEnvironment({ ...s3Config, S3_ENDPOINT: endpoint }, () => {
+      assert.throws(
+        () => loadEnv(),
+        /S3_ENDPOINT must start with https:\/\/ when STORAGE_PROVIDER=s3/
+      );
+    });
+  }
+});
+
 test("development and test environments do not apply production-only checks", () => {
   for (const NODE_ENV of ["development", "test"]) {
     withEnvironment(

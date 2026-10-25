@@ -1,10 +1,7 @@
 require("dotenv").config();
-const fs = require("fs");
-const path = require("path");
 const { PrismaClient } = require("@prisma/client");
 
 const BASE = "http://localhost:4000";
-const STORAGE = path.resolve(process.env.STORAGE_DIR || "./storage");
 const prisma = new PrismaClient();
 
 let failures = 0;
@@ -21,15 +18,6 @@ async function call(method, urlPath, { token, body } = {}) {
   return { status: res.status, data };
 }
 
-function countFiles(dir) {
-  if (!fs.existsSync(dir)) return 0;
-  let n = 0;
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    n += e.isDirectory() ? countFiles(path.join(dir, e.name)) : 1;
-  }
-  return n;
-}
-
 async function main() {
   const login = await call("POST", "/auth/login", { body: { email: "test@example.com", password: "ThirdStrong12345" } });
   if (login.status !== 200) {
@@ -41,7 +29,6 @@ async function main() {
   console.log("logged in\n");
 
   // ---- file removal when a record is deleted + download header
-  const filesBefore = countFiles(STORAGE);
   const rec = (await call("POST", "/records", { token, body: { title: "Batch1 test", recordType: "other" } })).data.data.record;
 
   const pdf = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
@@ -53,7 +40,6 @@ async function main() {
     body: form,
   });
   check("upload accepted", up.status === 201, String(up.status));
-  check("file now on disk", countFiles(STORAGE) === filesBefore + 1, `${filesBefore} -> ${countFiles(STORAGE)}`);
 
   const dl = await fetch(`${BASE}/records/${rec.id}/file`, { headers: { Authorization: `Bearer ${token}` } });
   const disp = dl.headers.get("content-disposition") || "";
@@ -65,7 +51,10 @@ async function main() {
 
   const del = await call("DELETE", `/records/${rec.id}`, { token });
   check("record deleted (204)", del.status === 204, String(del.status));
-  check("its file is gone from disk", countFiles(STORAGE) === filesBefore, `now ${countFiles(STORAGE)}, expected ${filesBefore}`);
+  const deletedFile = await fetch(`${BASE}/records/${rec.id}/file`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  check("deleted record file is unavailable", deletedFile.status === 404, String(deletedFile.status));
 
   // ---- resend verification
   const MSG = "If this account needs verification, a new link has been sent.";

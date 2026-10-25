@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test test/chatScope.service.test.js test/chatReportContext.service.test.js test/env.test.js test/familyMember.service.test.js test/familyOcr.api.test.js test/llm.service.test.js test/recordFile.service.test.js test/recordOcr.engine.test.js test/recordOcr.service.test.js test/recordOcr.worker.test.js test/recordOwnership.test.js",
+    "test": "node --test test/chatScope.service.test.js test/chatReportContext.service.test.js test/env.test.js test/familyMember.service.test.js test/familyOcr.api.test.js test/llm.service.test.js test/recordFile.service.test.js test/recordOcr.engine.test.js test/recordOcr.service.test.js test/recordOcr.worker.test.js test/recordOwnership.test.js test/storage.service.test.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
