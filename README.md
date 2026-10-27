@@ -106,4 +106,3 @@ This project includes AI and mortality-risk features intended for research and d
 
 - [caretwin-backend/README.md](./caretwin-backend/README.md) — backend API details
 - [caretwin-frontend/README.md](./caretwin-frontend/README.md) — frontend setup and config
-- [caretwin-mortality-addon/README.md](./caretwin-mortality-addon/README.md) — mortality demo notes
