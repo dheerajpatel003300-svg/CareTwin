@@ -1,6 +1,22 @@
 // Calls the internal Python ML service. Nothing is stored: inputs and the score live only
 // for the duration of the request.
-const TIMEOUT_MS = 10000;
+const DEFAULT_TIMEOUT_MS = 60000;
+const MIN_TIMEOUT_MS = 5000;
+const MAX_TIMEOUT_MS = 120000;
+const WARM_UP_INTERVAL_MS = 4 * 60 * 1000;
+const WARM_UP_TIMEOUT_MS = 65000;
+
+const configuredTimeout = Number(process.env.ML_SERVICE_TIMEOUT_MS);
+const TIMEOUT_MS = Math.min(
+  MAX_TIMEOUT_MS,
+  Math.max(
+    MIN_TIMEOUT_MS,
+    Number.isFinite(configuredTimeout) && configuredTimeout > 0
+      ? configuredTimeout
+      : DEFAULT_TIMEOUT_MS,
+  ),
+);
+let lastWarmUpAt = null;
 
 function httpError(statusCode, message, details) {
   const error = new Error(message);
@@ -68,4 +84,25 @@ async function predictMortality(input) {
   });
 }
 
-module.exports = { getSchema, predictMortality };
+function warmUpMlService() {
+  try {
+    const configuredUrl = process.env.ML_SERVICE_URL;
+    if (!configuredUrl) return;
+
+    const now = Date.now();
+    if (lastWarmUpAt !== null && now - lastWarmUpAt < WARM_UP_INTERVAL_MS) return;
+    lastWarmUpAt = now;
+
+    const url = configuredUrl.replace(/\/+$/, "");
+    Promise.resolve(
+      fetch(`${url}/health`, {
+        method: "GET",
+        signal: AbortSignal.timeout(WARM_UP_TIMEOUT_MS),
+      }),
+    ).catch(() => {});
+  } catch {
+    // A best-effort warm-up must never affect the dashboard response.
+  }
+}
+
+module.exports = { getSchema, predictMortality, warmUpMlService };
